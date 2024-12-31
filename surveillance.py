@@ -3,9 +3,9 @@ import time
 import threading
 import serial
 from flask import Flask, render_template, Response, jsonify
-import cv2
 from picamera2 import Picamera2
-from io import BytesIO
+from picamera2.encoders import H264Encoder
+import cv2
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -18,12 +18,16 @@ os.makedirs(captured_videos_dir, exist_ok=True)
 
 # Initialize the PiCamera2
 picam2 = Picamera2()
-picam2.configure(picam2.create_video_configuration())
+picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))  # Lower resolution (640x480)
 picam2.start()
 
 # Initialize the serial connection to Arduino (adjust the port accordingly)
 arduino = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)  # Change port to your Arduino's port
 time.sleep(2)  # Wait for the serial connection to establish
+
+# Global flag to track recording status
+is_recording = False
+video_stream = None
 
 # Function to generate frames from the camera
 def generate_frames():
@@ -35,8 +39,7 @@ def generate_frames():
         # Yield the frame as byte data in the required format for MJPEG streaming
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.1)  # Adjust this for frame rate
-
+        time.sleep(0.05)  # Adjust this for frame rate (lower sleep time for smoother feed)
 
 # Route to capture and save an image
 @app.route('/capture_image')
@@ -51,41 +54,29 @@ def capture_image():
 
     return jsonify({"status": "success", "message": "Image captured", "filename": image_filename})
 
-# Route to toggle video recording
-is_recording = False
-video_stream = None
-
+# Function to start recording video with Picamera2 and H264 encoding
 def record_video():
     global video_stream
     timestamp = time.strftime('%Y%m%d_%H%M%S')
-    video_filename = f'{timestamp}.mp4'
+    video_filename = f'{timestamp}.h264'
     video_path = os.path.join(captured_videos_dir, video_filename)
-    
-    # Use H264 codec for better compatibility
-    fourcc = cv2.VideoWriter_fourcc(*'H264')  # Or try 'MJPG' if H264 doesn't work
 
-    # Capture first frame to get the resolution
-    frame = picam2.capture_array()
-    height, width, _ = frame.shape
+    # Create an H264 encoder
+    encoder = H264Encoder()
 
-    # Initialize VideoWriter with the frame's resolution
-    video_stream = cv2.VideoWriter(video_path, fourcc, 30.0, (width, height))
+    print("Recording video...")
+    # Start video recording with Picamera2
+    picam2.start_recording(encoder, video_path)
 
     start_time = time.time()
     while is_recording and (time.time() - start_time < 600):  # Record for up to 10 minutes
-        frame = picam2.capture_array()
-        video_stream.write(frame)
-        time.sleep(0.05)  # Shorter sleep for better responsiveness
+        time.sleep(0.05)  # Small sleep to prevent high CPU usage
 
-    video_stream.release()
+    # Stop the recording
+    picam2.stop_recording()
+    print(f"Video saved to {video_path}")
 
-# Route to stream video feed
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# Home route for testing
-
+# Route to toggle video recording
 @app.route('/toggle_recording')
 def toggle_recording():
     global is_recording
@@ -99,13 +90,18 @@ def toggle_recording():
         threading.Thread(target=record_video, daemon=True).start()
         return jsonify({"status": "recording_started"})
 
+# Route to stream video feed
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 # Route to show captured media
 @app.route('/show_media')
 def show_media():
     images = os.listdir(captured_images_dir)
     videos = os.listdir(captured_videos_dir)
     images = [image for image in images if image.endswith(".jpg")]
-    videos = [video for video in videos if video.endswith(".mp4")]
+    videos = [video for video in videos if video.endswith(".h264")]
     return render_template('show_media.html', images=images, videos=videos)
 
 # Route to handle Arduino communication
@@ -145,6 +141,15 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
+    try:
+        # Ensure the app runs on the local network
+        port = int(os.getenv('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, threaded=True)
+    finally:
+        # Release the camera when the app stops
+        picam2.stop()
+        arduino.close()  # Close the Arduino serial connection
+
     try:
         # Ensure the app runs on the local network
         port = int(os.getenv('PORT', 5000))
