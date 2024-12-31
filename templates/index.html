@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Surveillance and Servo Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        #video-container {
+            max-width: 100%;
+            margin: 20px 0;
+        }
+        #live-stream {
+            max-width: 100%;
+            background: black;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .servo-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .servo-controls button {
+            background-color: #008CBA;
+        }
+        .servo-controls .start-stop {
+            background-color: #FF6347;
+        }
+    </style>
+    <script>
+        // Function to send start command for servo movement
+        function startMovement() {
+            fetch('/start', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    console.log(data);
+                    alert('Servo loop started');
+                });
+        }
+
+        // Function to send stop command for servo movement
+        function stopMovement() {
+            fetch('/stop', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    console.log(data);
+                    alert('Servo loop stopped and reset');
+                });
+        }
+
+        // Capture Image
+        function captureImage() {
+            fetch('/capture_image')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Image captured successfully!');
+                    }
+                });
+        }
+
+        // Toggle Video Recording (Start/Stop)
+        function toggleRecording() {
+            fetch('/toggle_recording')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'recording_started') {
+                        alert('Recording started');
+                    } else {
+                        alert('Recording stopped');
+                    }
+                });
+        }
+
+        // Send request to control the wings servo
+        function controlWings() {
+            fetch('/wings', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    console.log(data);
+                    alert('Wings controlled');
+                });
+        }
+
+        // Send request to move the head to the right
+        function moveRightHead() {
+            fetch('/righthead', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    console.log(data);
+                    alert('Head turned to the right');
+                });
+        }
+
+        // Send request to move the head to the left
+        function moveLeftHead() {
+            fetch('/lefthead', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    console.log(data);
+                    alert('Head turned to the left');
+                });
+        }
+    </script>
+</head>
+<body>
+    <h1>Live Surveillance and Servo Control</h1>
+
+    <!-- Live Video Stream -->
+    <div id="video-container">
+        <img src="/video_feed" id="live-stream" alt="Live Video Feed">
+    </div>
+
+    <!-- Media Capture and Recording Controls -->
+    <div class="controls">
+        <button onclick="captureImage()">Capture Image</button>
+        <button onclick="toggleRecording()">Start/Stop Recording</button>
+        <a href="/show_media"><button>View Captured Media</button></a>
+    </div>
+
+    <!-- Servo Control Panel -->
+    <div class="servo-controls">
+        <h3>Servo Controls</h3>
+        <button class="start-stop" onclick="startMovement()">Start Movement</button>
+        <button class="start-stop" onclick="stopMovement()">Stop Movement</button>
+        <button onclick="controlWings()">Control Wings</button>
+        <button onclick="moveRightHead()">Move Right Head</button>
+        <button onclick="moveLeftHead()">Move Left Head</button>
+    </div>
+</body>
+</html>
